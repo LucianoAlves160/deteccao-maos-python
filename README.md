@@ -1,6 +1,6 @@
 # Molde Base: Detector de Maos e Gestos com Python, MediaPipe e OpenCV
 
-Este repositorio serve como um molde base de Visao Computacional para detetar maos em tempo real atraves da webcam. O projeto ja vem configurado com rastreamento avancado, reconhecimento de alguns sinais (como Libras e gestos divertidos) e um efeito visual interativo para interligar as maos.
+Este repositório contém uma aplicação prática de Visão Computacional para detecção e rastreamento de mãos em tempo real via webcam. O projeto conta com cálculo de distância dinâmica (Régua Digital entre polegar e indicador), reconhecimento de gestos em Libras e interligação visual entre articulações ao detectar duas mãos simultaneamente.
 
 Sinta-se a vontade para usar esta estrutura como ponto de partida e explorar a sua criatividade para inventar novas funcoes, comandos ou jogos.
 
@@ -35,15 +35,16 @@ Crie um ficheiro chamado hand_detection.py na sua pasta e cole o codigo abaixo. 
 
 Python
 import cv2
+import math
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
-# Configuração do Hand Landmarker (Certifique-se de ter o hand_landmarker.task na pasta)
+# Configuração do Hand Landmarker para até 2 mãos
 base_options = python.BaseOptions(model_asset_path='hand_landmarker.task')
 options = vision.HandLandmarkerOptions(
     base_options=base_options,
-    num_hands=2,  # Deteta até 2 mãos em simultâneo
+    num_hands=2,  # Permite detectar 1 ou 2 mãos
     min_hand_detection_confidence=0.5,
     min_hand_presence_confidence=0.5
 )
@@ -60,40 +61,63 @@ while cap.isOpened():
         print("Não foi possível ler o frame da câmera.")
         break
 
-    # Espelha a imagem horizontalmente (modo espelho)
+    # Espelha a imagem horizontalmente
     image = cv2.flip(image, 1)
     height, width, _ = image.shape
 
-    # Converte para RGB e cria o objeto do MediaPipe
+    # Converte para RGB e processa com o MediaPipe
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=image_rgb)
-
-    # Processa a detecção
     detection_result = detector.detect(mp_image)
 
-    status_texto = "Mostre as maos..."
+    status_texto = "Mostre as mãos..."
 
-    # Se detetar 2 mãos, interliga os dedos correspondentes (Exemplo Base)
-    if detection_result.hand_landmarks and len(detection_result.hand_landmarks) == 2:
-        mao1 = detection_result.hand_landmarks[0]
-        mao2 = detection_result.hand_landmarks[1]
-        status_texto = "Duas maos interligadas!"
+    if detection_result.hand_landmarks:
+        qtd_maos = len(detection_result.hand_landmarks)
 
-        pontos_para_ligar = [4, 8, 12, 16, 20] # Polegar ao Mindinho
-        for idx in pontos_para_ligar:
-            p1 = mao1[idx]
-            p2 = mao2[idx]
-            x1, y1 = int(p1.x * width), int(p1.y * height)
-            x2, y2 = int(p2.x * width), int(p2.y * height)
-            
-            # Linha interligando as mãos
-            cv2.line(image, (x1, y1), (x2, y2), (203, 192, 255), 2)
-            cv2.circle(image, (x1, y1), 6, (203, 192, 255), -1)
-            cv2.circle(image, (x2, y2), 6, (203, 192, 255), -1)
+        # SE DETECTAR 2 MÃOS -> INTERLIGA OS DEDOS
+        if qtd_maos == 2:
+            mao1 = detection_result.hand_landmarks[0]
+            mao2 = detection_result.hand_landmarks[1]
+            status_texto = "Duas maos interligadas!"
 
-    # Se detetar 1 mão, deteta gestos de exemplo
-    elif detection_result.hand_landmarks and len(detection_result.hand_landmarks) == 1:
-        for hand_landmarks in detection_result.hand_landmarks:
+            pontos_para_ligar = [4, 8, 12, 16, 20] # Polegar ao Mindinho
+            for idx in pontos_para_ligar:
+                p1 = mao1[idx]
+                p2 = mao2[idx]
+                x1, y1 = int(p1.x * width), int(p1.y * height)
+                x2, y2 = int(p2.x * width), int(p2.y * height)
+                
+                # Linha e círculos interligando as duas mãos
+                cv2.line(image, (x1, y1), (x2, y2), (203, 192, 255), 2)
+                cv2.circle(image, (x1, y1), 6, (203, 192, 255), -1)
+                cv2.circle(image, (x2, y2), 6, (203, 192, 255), -1)
+
+        # SE DETECTAR 1 MÃO -> ATIVA A RÉGUA DIGITAL + GESTOS
+        elif qtd_maos == 1:
+            hand_landmarks = detection_result.hand_landmarks[0]
+
+            # Ponto 4 (Polegar) e Ponto 8 (Indicador)
+            polegar = hand_landmarks[4]
+            indicador = hand_landmarks[8]
+
+            x1, y1 = int(polegar.x * width), int(polegar.y * height)
+            x2, y2 = int(indicador.x * width), int(indicador.y * height)
+
+            # Cálculo da distância (Régua Digital)
+            distancia_px = math.hypot(x2 - x1, y2 - y1)
+
+            # Desenha a linha da régua digital entre polegar e indicador
+            cv2.circle(image, (x1, y1), 7, (255, 0, 128), -1)
+            cv2.circle(image, (x2, y2), 7, (255, 0, 128), -1)
+            cv2.line(image, (x1, y1), (x2, y2), (255, 0, 128), 2)
+
+            # Ponto médio para exibir a medida
+            mid_x, mid_y = (x1 + x2) // 2, (y1 + y2) // 2
+            cv2.putText(image, f"{int(distancia_px)} px", (mid_x - 20, mid_y - 10),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+            # Reconhecimento de Gestos em Libras
             indicador_cima = hand_landmarks[8].y < hand_landmarks[6].y
             indicador_baixo = hand_landmarks[8].y > hand_landmarks[6].y
             medio_cima = hand_landmarks[12].y < hand_landmarks[10].y
@@ -112,38 +136,29 @@ while cap.isOpened():
             elif indicador_baixo and medio_baixo and anelar_baixo and mindinho_baixo:
                 status_texto = "COMER!"
             else:
-                status_texto = "Mao detetada!"
+                status_texto = f"REGUA: {int(distancia_px)} px"
 
-            # Desenha os pontos da mão
+            # Desenha os pontos restantes da mão
             for landmark in hand_landmarks:
                 x = int(landmark.x * width)
                 y = int(landmark.y * height)
-                cv2.circle(image, (x, y), 4, (203, 192, 255), -1)
+                cv2.circle(image, (x, y), 3, (203, 192, 255), -1)
 
     # Painel superior estilizado
-    cv2.rectangle(image, (20, 20), (460, 90), (50, 20, 50), -1)
-    cv2.rectangle(image, (20, 20), (460, 90), (203, 192, 255), 2)
-    cv2.putText(image, status_texto, (35, 70), 
+    cv2.rectangle(image, (20, 20), (460, 80), (50, 20, 50), -1)
+    cv2.rectangle(image, (20, 20), (460, 80), (203, 192, 255), 2)
+    cv2.putText(image, status_texto, (35, 60), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (203, 192, 255), 2)
 
-    # Mostra a janela
-    cv2.imshow('Deteccao de Gestos', image)
+    # Exibe a janela de vídeo
+    cv2.imshow('Deteccao de Maos e Gestos', image)
 
     if cv2.waitKey(5) & 0xFF == ord('q'):
         break
 
 cap.release()
 cv2.destroyAllWindows()
-Use a sua criatividade
-Este codigo e apenas um ponto de partida. Sinta-se totalmente livre para alterar as regras e criar novas funcionalidades, como:
 
-Medir a distancia entre os dedos (criar uma regua digital).
-
-Controlar o volume do computador ou o brilho da tela com os gestos.
-
-Criar novos sinais da Lingua de Sinais (Libras) para traduzir frases.
-
-Desenvolver mini-jogos controlados por movimentos das maos.
 
 Como Executar
 No seu terminal, com o ambiente virtual ativado, execute:
@@ -156,7 +171,10 @@ Desenvolvido por
 Criado por Pamella Christiny (@codebypam).
 
 
----
-3. Clica no botão verde **Commit changes...** no canto superior direito para salvar. 
+## 🛠️ Funcionalidades Implementadas
 
-O teu README vai ficar imediatamente limpo, bem estruturado e sem blocos amontoados!
+* **Régua Digital:** Medição contínua da distância (em pixels) entre a ponta do polegar e a do indicador em tempo real.
+
+---
+
+Desenvolvido por **Luciano Alves** como projeto prático de Visão Computacional.
