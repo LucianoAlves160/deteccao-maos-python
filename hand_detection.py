@@ -14,8 +14,8 @@ options = vision.HandLandmarkerOptions(
 )
 detector = vision.HandLandmarker.create_from_options(options)
 
-# Inicializa a captura de vídeo da webcam
-cap = cv2.VideoCapture(0)
+# Inicializa a captura de vídeo da webcam com DirectShow
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
 print("Pressione 'q' na janela do vídeo para sair.")
 
